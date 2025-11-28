@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Pocket Code Pro</title>
+    <style>
+        :root {
+            --bg: #121212;
+            --card: #1e1e1e;
+            --text: #e0e0e0;
+            --text-sec: #a0a0a0;
+            --accent: #bb86fc;
+            --success: #03dac6;
+            --danger: #cf6679;
+            --border: #333;
+        }
+
+        * { box-sizing: border-box; outline: none; -webkit-tap-highlight-color: transparent; font-family: 'Segoe UI', sans-serif; }
+        
+        body { background: var(--bg); color: var(--text); margin: 0; padding: 0; height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
+
+        /* HEADER */
+        .header {
+            background: #1f1f1f; padding: 15px; display: flex; align-items: center; justify-content: space-between;
+            border-bottom: 1px solid var(--border); height: 60px; flex-shrink: 0; z-index: 10;
+        }
+        .app-title { font-size: 1.2rem; font-weight: bold; color: var(--accent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .nav-btn { background: none; border: none; color: white; font-size: 1.5rem; padding: 0 10px; cursor: pointer; }
+
+        /* SCREENS */
+        .screen-container { position: relative; flex-grow: 1; overflow: hidden; }
+        
+        .screen {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: var(--bg); overflow-y: auto; padding: 15px; padding-bottom: 90px;
+            display: none; flex-direction: column;
+        }
+        .screen.active { display: flex; }
+
+        /* LIST CARDS */
+        .card {
+            background: var(--card); padding: 15px; margin-bottom: 12px; border-radius: 10px;
+            display: flex; flex-direction: column; gap: 10px;
+            border: 1px solid var(--border);
+        }
+        
+        .card-header { display: flex; justify-content: space-between; align-items: center; }
+        .card-title { font-weight: bold; font-size: 1.1rem; color: #fff; cursor: pointer; flex-grow: 1; }
+        .card-meta { font-size: 0.8rem; color: var(--text-sec); }
+
+        /* ACTION BUTTONS */
+        .card-actions { display: flex; gap: 8px; margin-top: 5px; flex-wrap: wrap; }
+        .btn { flex: 1; padding: 8px; border: none; border-radius: 6px; font-weight: bold; font-size: 0.8rem; cursor: pointer; color: #fff; min-width: 60px; }
+        
+        .btn-rename { background: #333; color: var(--accent); border: 1px solid var(--accent); }
+        .btn-del { background: #333; color: var(--danger); border: 1px solid var(--danger); }
+        .btn-download { background: #333; color: var(--success); border: 1px solid var(--success); }
+        .btn-run { background: var(--success); color: #000; border: none; font-weight: 900; }
+        .btn-edit { background: #444; color: #fff; border: 1px solid #666; }
+
+        /* EDITOR */
+        #screen-editor { padding: 0; overflow: hidden; }
+        
+        .editor-toolbar {
+            background: #252526; padding: 8px; display: flex; gap: 10px; overflow-x: auto;
+            border-bottom: 1px solid var(--border); flex-shrink: 0;
+        }
+        .tool-btn { padding: 8px 15px; background: #333; color: white; border: 1px solid #555; border-radius: 4px; white-space: nowrap; cursor: pointer; font-weight: bold; }
+        .btn-save { background: var(--accent); color: black; border: none; }
+        
+        #file-name-input {
+            width: 100%; padding: 12px; background: #1e1e1e; border: none; 
+            border-bottom: 1px solid var(--border); color: var(--accent); font-weight: bold; font-size: 1rem;
+        }
+
+        textarea#code-area {
+            flex-grow: 1; background: #121212; color: #d4d4d4; border: none; padding: 15px;
+            font-family: 'Courier New', monospace; font-size: 14px; line-height: 1.5; resize: none;
+        }
+
+        /* FAB (Floating Action Button) */
+        .fab {
+            position: fixed; bottom: 25px; right: 25px; width: 60px; height: 60px;
+            background: var(--accent); color: black; border-radius: 50%; border: none;
+            font-size: 30px; display: flex; justify-content: center; align-items: center;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5); cursor: pointer; z-index: 100;
+        }
+
+        .empty-msg { text-align: center; color: var(--text-sec); margin-top: 100px; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <button class="nav-btn" id="back-btn" onclick="goBack()" style="visibility: hidden;">&#8592;</button>
+        <span class="app-title" id="page-title">My Projects</span>
+        <div style="width: 24px;"></div>
+    </div>
+
+    <div class="screen-container">
+        
+        <div id="screen-folders" class="screen active">
+            <div id="folder-list"></div>
+        </div>
+
+        <div id="screen-files" class="screen">
+            <div id="file-list"></div>
+        </div>
+
+        <div id="screen-editor" class="screen">
+            <input type="text" id="file-name-input" placeholder="filename.html">
+            <div class="editor-toolbar">
+                <button class="tool-btn btn-save" onclick="saveFile(true)">💾 SAVE</button>
+                <button class="tool-btn" onclick="pasteCode()">📋 PASTE</button>
+                <button class="tool-btn" style="background:#333; color:orange;" onclick="runCurrentCode()">▶ RUN</button>
+            </div>
+            <textarea id="code-area" placeholder="<html> Write your code here... </html>"></textarea>
+        </div>
+
+    </div>
+
+    <button class="fab" id="fab-btn" onclick="handleFab()">+</button>
+
+    <script>
+        // --- STATE & DB ---
+        let db = JSON.parse(localStorage.getItem('pocket_html_db')) || [];
+        let currentFolderId = null;
+        let currentFileId = null;
+
+        function saveDB() {
+            localStorage.setItem('pocket_html_db', JSON.stringify(db));
+        }
+
+        // --- NAVIGATION & HISTORY ---
+        
+        // Push initial state
+        window.history.replaceState({ view: 'folders' }, '');
+
+        // Handle Back Swipe / Button
+        window.onpopstate = function(event) {
+            const state = event.state;
+            if (state && state.view) {
+                if (state.view === 'folders') loadFoldersScreen();
+                else if (state.view === 'files') loadFilesScreen(state.folderId);
+                else if (state.view === 'editor') loadEditorScreen(state.fileId);
+            } else {
+                loadFoldersScreen();
+            }
+        };
+
+        function navigateTo(view, data = {}) {
+            window.history.pushState({ view: view, ...data }, '');
+            if (view === 'folders') loadFoldersScreen();
+            else if (view === 'files') loadFilesScreen(data.folderId);
+            else if (view === 'editor') loadEditorScreen(data.fileId);
+        }
+
+        function goBack() { window.history.back(); }
+
+        // --- SCREENS ---
+
+        function loadFoldersScreen() {
+            currentFolderId = null;
+            document.getElementById('page-title').innerText = "My Projects";
+            document.getElementById('back-btn').style.visibility = 'hidden';
+            document.getElementById('fab-btn').style.display = 'flex';
+            switchScreen('screen-folders');
+            renderFolders();
+        }
+
+        function loadFilesScreen(folderId) {
+            currentFolderId = folderId;
+            const folder = db.find(f => f.id === folderId);
+            document.getElementById('page-title').innerText = folder.name;
+            document.getElementById('back-btn').style.visibility = 'visible';
+            document.getElementById('fab-btn').style.display = 'flex';
+            switchScreen('screen-files');
+            renderFiles();
+        }
+
+        function loadEditorScreen(fileId) {
+            currentFileId = fileId; 
+            document.getElementById('page-title').innerText = "Editor";
+            document.getElementById('back-btn').style.visibility = 'visible';
+            document.getElementById('fab-btn').style.display = 'none';
+
+            const titleInp = document.getElementById('file-name-input');
+            const codeInp = document.getElementById('code-area');
+            
+            if (fileId) {
+                const folder = db.find(f => f.id === currentFolderId);
+                const file = folder.files.find(f => f.id === fileId);
+                titleInp.value = file.name;
+                codeInp.value = file.content;
+            } else {
+                titleInp.value = "";
+                codeInp.value = "";
+            }
+            switchScreen('screen-editor');
+        }
+
+        function switchScreen(id) {
+            document.querySelectorAll('.screen').forEach(el => el.classList.remove('active'));
+            document.getElementById(id).classList.add('active');
+        }
+
+        // --- FAB LOGIC ---
+        function handleFab() {
+            if (!document.getElementById('screen-folders').classList.contains('active')) {
+                // In Files Screen -> New File
+                navigateTo('editor', { folderId: currentFolderId, fileId: null });
+            } else {
+                // In Folders Screen -> New Folder
+                const name = prompt("Enter Project Name:");
+                if (name) {
+                    db.unshift({ id: Date.now(), name: name, files: [] });
+                    saveDB();
+                    renderFolders();
+                }
+            }
+        }
+
+        // --- FOLDER LOGIC ---
+        function renderFolders() {
+            const list = document.getElementById('folder-list');
+            list.innerHTML = "";
+            if (db.length === 0) list.innerHTML = "<div class='empty-msg'>No projects. Click +</div>";
+
+            db.forEach(folder => {
+                const div = document.createElement('div');
+                div.className = 'card';
+                div.innerHTML = `
+                    <div class="card-header" onclick="navigateTo('files', {folderId: ${folder.id}})">
+                        <span class="card-title">📁 ${folder.name}</span>
+                        <span class="card-meta">${folder.files.length} files</span>
+                    </div>
+                    <div class="card-actions">
+                        <button class="btn btn-rename" onclick="renameFolder(${folder.id})">Rename</button>
+                        <button class="btn btn-del" onclick="deleteFolder(${folder.id})">Delete</button>
+                    </div>
+                `;
+                list.appendChild(div);
+            });
+        }
+
+        function renameFolder(id) {
+            const folder = db.find(f => f.id === id);
+            const newName = prompt("Rename Project:", folder.name);
+            if (newName) { folder.name = newName; saveDB(); renderFolders(); }
+        }
+
+        function deleteFolder(id) {
+            if(confirm("Delete this project?")) { db = db.filter(f => f.id !== id); saveDB(); renderFolders(); }
+        }
+
+        // --- FILE LOGIC ---
+        function renderFiles() {
+            const folder = db.find(f => f.id === currentFolderId);
+            const list = document.getElementById('file-list');
+            list.innerHTML = "";
+            if (!folder.files.length) list.innerHTML = "<div class='empty-msg'>No files. Click +</div>";
+
+            [...folder.files].reverse().forEach(file => {
+                const div = document.createElement('div');
+                div.className = 'card';
+                div.innerHTML = `
+                    <div class="card-header">
+                        <span class="card-title" onclick="navigateTo('editor', {folderId: ${currentFolderId}, fileId: ${file.id}})">
+                            &lt;/&gt; ${file.name || 'Untitled'}
+                        </span>
+                    </div>
+                    <div class="card-actions">
+                        <button class="btn btn-run" onclick="runHtml(${file.id})">▶ RUN</button>
+                        <button class="btn btn-edit" onclick="navigateTo('editor', {folderId: ${currentFolderId}, fileId: ${file.id}})">Edit</button>
+                    </div>
+                    <div class="card-actions">
+                        <button class="btn btn-rename" onclick="renameFile(${file.id})">Rename</button>
+                        <button class="btn btn-download" onclick="downloadFile(${file.id})">Download</button>
+                        <button class="btn btn-del" onclick="deleteFile(${file.id})">Delete</button>
+                    </div>
+                `;
+                list.appendChild(div);
+            });
+        }
+
+        function renameFile(fileId) {
+            const folder = db.find(f => f.id === currentFolderId);
+            const file = folder.files.find(f => f.id === fileId);
+            const newName = prompt("Rename File:", file.name);
+            if (newName) { file.name = newName; saveDB(); renderFiles(); }
+        }
+
+        function deleteFile(fileId) {
+            if(confirm("Delete this file?")) {
+                const folder = db.find(f => f.id === currentFolderId);
+                folder.files = folder.files.filter(f => f.id !== fileId);
+                saveDB();
+                renderFiles();
+            }
+        }
+
+        function downloadFile(fileId) {
+            const folder = db.find(f => f.id === currentFolderId);
+            const file = folder.files.find(f => f.id === fileId);
+            const blob = new Blob([file.content], { type: 'text/html' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = file.name || 'download.html';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        // --- EDITOR LOGIC ---
+        async function pasteCode() {
+            try {
+                const text = await navigator.clipboard.readText();
+                document.getElementById('code-area').value = text;
+            } catch (err) { alert("Paste manually."); }
+        }
+
+        function saveFile(showMsg = false) {
+            const name = document.getElementById('file-name-input').value || "untitled.html";
+            const content = document.getElementById('code-area').value;
+            const folder = db.find(f => f.id === currentFolderId);
+
+            if (currentFileId) {
+                const file = folder.files.find(f => f.id === currentFileId);
+                file.name = name;
+                file.content = content;
+            } else {
+                const newId = Date.now();
+                folder.files.push({ id: newId, name: name, content: content });
+                currentFileId = newId;
+            }
+            saveDB();
+            if(showMsg) alert("Saved!");
+        }
+
+        // Run from Editor directly
+        function runCurrentCode() {
+            saveFile(false);
+            runHtml(currentFileId);
+        }
+
+        // --- RUN LOGIC (BLOB URL / NEW TAB) ---
+        function runHtml(fileId) {
+            const folder = db.find(f => f.id === currentFolderId);
+            const file = folder.files.find(f => f.id === fileId);
+            if (file) {
+                const blob = new Blob([file.content], { type: 'text/html' });
+                const url = URL.createObjectURL(blob);
+                window.open(url, '_blank');
+            }
+        }
+
+        // Start
+        loadFoldersScreen();
+    </script>
+</body>
+</html>
+
